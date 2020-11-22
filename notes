@@ -1,0 +1,561 @@
+#!/usr/bin/env bash
+
+NOTES_DIR="${NOTES_DIR:-${HOME}/@NOTEDIR@}"
+EDITOR="${EDITOR:-vi}"
+PAGER="${PAGER:-less}"
+EXCLUDES=( '.git' '.svn' )
+
+ESCAPE_CHAR=$'\033'
+COLOR_NC="${ESCAPE_CHAR}[0m"
+COLOR_INDEX="${ESCAPE_CHAR}[1;33m"      # Bright yellow
+COLOR_PATH="${ESCAPE_CHAR}[32m"         # Green
+
+die ()
+{
+    echo "ERROR: ${*}"
+    exit 1
+}
+
+usage()
+{
+    cat <<EOF
+Usage: notes [OPTION...] COMMAND [ARG...]
+
+Notes management application.
+
+OPTIONS:
+  -h, --help                        Print this help message
+  -d, --dir=DIR                     Set note directory to DIR
+  -V, --version                     Print version and exit
+
+COMMAND:
+  add NAME                          Adds new note
+  cat|show NOTE                     Print NOTE content
+  cp|copy  NOTE DST                 Copy NOTE to destination DST
+  find|search [-t] NAME             Search note with name containing NOTE.
+                                      If '-t' is specified then the output will
+                                      be formatted as a tree, or as a list
+                                      otherwise.
+  edit NOTE                         Open editor to modify NOTE
+  grep [GREP_ARGS...]               Run 'grep' in the notes directory
+  less|view NOTE                    View NOTE in a pager
+  ls|list|tree NAME_PREFIX          Print notes tree with names starting with
+                                      NAME_PREFIX
+  mv|move NOTE DST                  Move NOTE to destination DST
+  rm|remove NOTE                    Remove NOTE
+
+For all commands NOTE can either be a note file name in the notes directory,
+or an index returned by 'list', 'grep' or 'find' commands.
+EOF
+
+    if [ $# -gt 0 ]
+    then
+        die "${*}"
+    else
+        exit 0
+    fi
+}
+
+version ()
+{
+    echo "notes version @VERSION@"
+}
+
+validate_note_name ()
+{
+    local note_name="${1}"
+
+    if [[ "${note_name}" == "../"* ]] || [[ "${note_name}" == *"/../"* ]]
+    then
+        die "../ is not allowed in note name"
+    fi
+}
+
+get_note_cache_path ()
+{
+    local tmpdir="${TMPDIR:-/tmp}"
+    # shellcheck disable=SC2155
+    local user="$(id -u)"
+
+    _get_note_cache_path_result="${tmpdir}/notes-${user}-cache"
+
+    touch -- "${_get_note_cache_path_result}" \
+        || die "Failed to create notes cache '${_get_note_cache_path_result}'"
+
+    chmod 600 -- "${_get_note_cache_path_result}" \
+        || die "Failed to chmod notes cache '${_get_note_cache_path_result}'"
+}
+
+collect_cached_notes ()
+{
+    _collect_notes_result=()
+
+    local note_cache_path="${1}"
+    if [[ -z "${note_cache_path}" ]]
+    then
+        get_note_cache_path
+        note_cache_path="${_get_note_cache_path_result}"
+    fi
+
+    while read -r -d '' line
+    do
+        _collect_notes_result+=( "${line}" )
+    done < "${note_cache_path}"
+}
+
+strip_prefix ()
+{
+    local prefix="${1}"
+
+    while IFS= read -r -d '' line
+    do
+        line="${line#${prefix}}"
+        printf "%s\0" "${line##/}"
+    done
+}
+
+collect_notes_with_find ()
+{
+    _collect_notes_result=()
+
+    local note_dir="${1}"
+    shift
+    local find_args=( "${@}" )
+
+    local args=( "${note_dir}" "${find_args[@]}" )
+    for ex in "${EXCLUDES[@]}"
+    do
+        args+=( \! -ipath "*${ex}*" )
+    done
+
+    get_note_cache_path
+    local note_cache_path="${_get_note_cache_path_result}"
+
+    find "${args[@]}" -print0 \
+        | strip_prefix "${note_dir}" | sort -z > "${note_cache_path}"
+
+    collect_cached_notes
+}
+
+collect_notes_with_grep ()
+{
+    _collect_notes_result=()
+
+    local note_dir="${1}"
+    shift
+    local args=( -l -Z -R --color=never )
+
+    for ex in "${EXCLUDES[@]}"
+    do
+        args+=( --exclude-dir="${ex}" )
+    done
+
+    args+=( "${@}" )
+
+    get_note_cache_path
+    local note_cache_path="${_get_note_cache_path_result}"
+
+    grep "${args[@]}" -- "${note_dir}"  \
+        | strip_prefix "${note_dir}" | sort -z > "${note_cache_path}"
+
+    collect_cached_notes "${note_cache_path}"
+}
+
+add_note ()
+{
+    local note_dir="${1}"
+    local note_name="${2}"
+    local editor="${3}"
+
+    validate_note_name "${note_name}"
+
+    local note_path="${note_dir}/${note_name}"
+    local note_root="${note_path%/*}"
+
+    mkdir -p -- "${note_root}" \
+        || die "Failed to create note directory '${note_root}'"
+
+    ${editor} -- "${note_path}"
+}
+
+pprint_notes_tree ()
+{
+    local notes=( "${@}" )
+    local tree_args=( -a --noreport -N --fromfile . )
+
+    local color_idx=""
+    local color_nc=""
+
+    if is_interactive
+    then
+        color_idx="${COLOR_INDEX}"
+        color_nc="${COLOR_NC}"
+        tree_args+=( -C )
+    fi
+
+    local idx=0
+
+    echo "${color_idx}notes${color_nc}"
+    for note in "${notes[@]}"
+    do
+        idx=$(( idx + 1 ))
+        printf "%s \t [ %s%d%s ]\n" \
+            "${note}" "${color_idx}" "${idx}" "${color_nc}"
+    done  | tree "${tree_args[@]}" | tail -n +2
+}
+
+pprint_notes_list ()
+{
+    local notes=( "${@}" )
+
+    local color_idx=""
+    local color_path=""
+    local color_nc=""
+
+    if is_interactive
+    then
+        color_idx="${COLOR_INDEX}"
+        color_path="${COLOR_PATH}"
+        color_nc="${COLOR_NC}"
+    fi
+
+    local idx=0
+    for fname in "${notes[@]}"
+    do
+        idx=$(( idx + 1 ))
+        echo "[ ${color_idx}${idx}${color_nc} ]" \
+            ": ${color_path}${fname}${color_nc}"
+    done
+}
+
+pprint_note_path ()
+{
+    local note="${1}"
+
+    local color_path=""
+    local color_nc=""
+
+    if is_interactive
+    then
+        color_path="${COLOR_PATH}"
+        color_nc="${COLOR_NC}"
+    fi
+
+    echo ">>> ${color_path}${note}${color_nc}"
+}
+
+find_notes ()
+{
+    local note_dir="${1}"
+    shift
+    local tree=0
+    local file_glob=""
+
+    while [ $# -gt 0 ]
+    do
+        case "${1}" in
+            -t|--tree)
+                tree=1
+                ;;
+            *)
+                if [[ -z "${file_glob}" ]]
+                then
+                    file_glob="${1}"
+                else
+                    usage "Too many arguments for find command"
+                fi
+                ;;
+        esac
+
+        shift
+    done
+
+    collect_notes_with_find "${note_dir}" -type f -ipath "*${file_glob}*"
+    local notes=( "${_collect_notes_result[@]}" )
+
+    if [[ "${tree}" -eq 1 ]]
+    then
+        pprint_notes_tree "${notes[@]}"
+    else
+        pprint_notes_list "${notes[@]}"
+    fi
+}
+
+list_notes ()
+{
+    local note_dir="${1}"
+    local note_prefix="${2}"
+
+    collect_notes_with_find "${note_dir}/" -type f \
+        -ipath "${note_dir}/${note_prefix}*"
+
+    local notes=( "${_collect_notes_result[@]}" )
+
+    pprint_notes_tree "${notes[@]}"
+}
+
+get_note_by_number ()
+{
+    _get_note_by_number_result=""
+
+    local note_dir="${1}" # Not used now. Reserved for possible future use.
+    local number="${2}"
+
+    collect_cached_notes
+    local notes=( "${_collect_notes_result[@]}" )
+
+    [[ ${number} -eq 0 ]] && die "Note numberation starts with 1"
+    if [[ ${number} -gt ${#notes[@]} ]]
+    then
+        die "Note number ${number} is greater than the number of notes " \
+            "${#notes[@]}"
+    fi
+
+    local index=$(( number - 1 ))
+    _get_note_by_number_result="${notes[${index}]}"
+}
+
+resolve_note_name ()
+{
+    local note_dir="${1}"
+    local name="${2}"
+    _resolve_note_name_result=""
+
+    [[ -z "${name}" ]] && die "Note name is not specified"
+
+    if [[ "${name}" =~ ^[[:digit:]]+$ ]]
+    then
+        get_note_by_number "${note_dir}" "${name}"
+        _resolve_note_name_result="${_get_note_by_number_result}"
+        return
+    fi
+
+    if ! [[ -e "${note_dir}/${name}" ]]
+    then
+        die "Note '${name}' is not found in '${note_dir}'"
+    fi
+
+    _resolve_note_name_result="${name}"
+}
+
+cat_note ()
+{
+    local note_dir="${1}"
+    local name="${2}"
+
+    resolve_note_name "${note_dir}" "${name}"
+    name="${_resolve_note_name_result}"
+
+    local path="${note_dir}/${name}"
+    pprint_note_path "${name}"
+    exec cat -- "${path}"
+}
+
+copy_or_move_note ()
+{
+    local note_dir="${1}"
+    local move="${2}"
+    local name="${3}"
+    local dst="${4}"
+
+    [[ -z "${dst}" ]] && die "Copy/Move require destination: copy/move SRC DST"
+
+    resolve_note_name "${note_dir}" "${name}"
+    name="${_resolve_note_name_result}"
+
+    local path="${note_dir}/${name}"
+    if [[ "${move}" -eq 1 ]]
+    then
+        echo "Moving '${path}' to '${note_dir}/${dst}'"
+        exec mv -- "${path}" "${note_dir}/${dst}"
+    else
+        echo "Copying '${path}' to '${note_dir}/${dst}'"
+        exec cp -- "${path}" "${note_dir}/${dst}"
+    fi
+}
+
+edit_note ()
+{
+    local note_dir="${1}"
+    local name="${2}"
+    local editor="${3}"
+
+    resolve_note_name "${note_dir}" "${name}"
+    name="${_resolve_note_name_result}"
+
+    local path="${note_dir}/${name}"
+    ${editor} -- "${path}"
+}
+
+is_interactive ()
+{
+    # check if fd=1 (stdout) is a terminal
+    [ -t 1 ]
+}
+
+grep_notes ()
+{
+    local note_dir="${1}"
+    shift
+    local grep_args=( "${@}" )
+
+    collect_notes_with_grep "${note_dir}" "${grep_args[@]}"
+    local notes=( "${_collect_notes_result[@]}" )
+
+    local color_idx=""
+    local color_path=""
+    local color_nc=""
+
+    if is_interactive
+    then
+        grep_args+=( --color=always )
+        color_idx="${COLOR_INDEX}"
+        color_path="${COLOR_PATH}"
+        color_nc="${COLOR_NC}"
+    fi
+
+    local idx=0
+    for note in "${notes[@]}"
+    do
+        idx=$(( idx + 1 ))
+        echo "[ ${color_idx}${idx}${color_nc} ]" \
+            ": ${color_path}${note}${color_nc}"
+
+        grep "${grep_args[@]}" "${note_dir}/${note}"
+        echo
+    done
+}
+
+remove_note ()
+{
+    local note_dir="${1}"
+    local name="${2}"
+
+    resolve_note_name "${note_dir}" "${name}"
+    name="${_resolve_note_name_result}"
+
+    local path="${note_dir}/${name}"
+    local response
+
+    local color_path=""
+    local color_nc=""
+
+    if is_interactive
+    then
+        color_path="${COLOR_PATH}"
+        color_nc="${COLOR_NC}"
+    fi
+
+    read -p "Remove note '${color_path}${path}${color_nc}'. Confirm [y/N]? " \
+         -r response
+
+    if [[ "${response}" =~ ^[yY]$ ]]
+    then
+        echo "Removing note '${path}'"
+        exec rm -- "${path}"
+    else
+        echo "Answered: '${response}'. Aborting..."
+    fi
+}
+
+main ()
+{
+    local cmd="${1}"
+    local dir="${2}"
+    shift 2
+    local args=( "${@}" )
+
+    [[ -z "${dir}" ]] && dir="${NOTES_DIR}"
+
+    dir="$(readlink -v -f "${dir}")" || die "Note directory does not exist"
+    [ -d "${dir}" ] || die "Note directory '${dir}' is not a directory"
+
+    dir="${dir%/}"
+
+    case "${cmd}" in
+        add)
+            [[ "${#args[@]}" -eq 1 ]] \
+                || usage "Invalid number of arguments for '${cmd}'"
+            add_note "${dir}" "${args[0]}" "${EDITOR}"
+            ;;
+        cat|show)
+            cat_note "${dir}" "${args[@]}"
+            ;;
+        copy|cp)
+            copy_or_move_note "${dir}" 0 "${args[@]}"
+            ;;
+        edit)
+            edit_note "${dir}" "${args[0]}" "${EDITOR}"
+            ;;
+        find|search)
+            [[ "${#args[@]}" -ge 1 ]] \
+                || usage "Too few arguments for '${cmd}'"
+            find_notes "${dir}" "${args[@]}"
+            ;;
+        grep)
+            grep_notes "${dir}" "${args[@]}"
+            ;;
+        less|view)
+            cat_note "${dir}" "${args[@]}" | "${PAGER}"
+            ;;
+        list|ls|tree)
+            [[ "${#args[@]}" -le 1 ]] \
+                || usage "Invalid number of arguments for '${cmd}'"
+            list_notes "${dir}" "${args[@]}"
+            ;;
+        move|mv)
+            copy_or_move_note "${dir}" 1 "${args[@]}"
+            ;;
+        remove|rm)
+            remove_note "${dir}" "${args[@]}"
+            ;;
+        *)
+            usage "Unknown command ${1}"
+    esac
+}
+
+cmd=
+dir=
+args=( )
+
+
+while [ $# -gt 0 ]
+do
+    case "$1" in
+        -h|--help|help)
+            usage
+            ;;
+        -V|--version)
+            version
+            exit 0
+            ;;
+        -d|--dir)
+            if [[ -n "${2}" ]]
+            then
+                dir="${2}"
+                shift
+            else
+                usage "No DIR specified after $1"
+            fi
+            ;;
+        add|cat|show|copy|cp)
+            ;&
+        edit|grep|less|view|ls|list|tree|move|mv|remove|rm|search|find)
+            cmd="${1}"
+            shift
+            break
+            ;;
+        *)
+            usage "Unknown argument '${1}'"
+            ;;
+    esac
+
+    shift
+done
+
+args=( "${@}" )
+
+[[ -z "${cmd}" ]] && usage "No command specified"
+
+main "${cmd}" "${dir}" "${args[@]}"
+

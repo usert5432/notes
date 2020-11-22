@@ -1,0 +1,232 @@
+.TH NOTES 1 notes-VERSION
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:NAME
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH NAME
+notes \- CLI notes management application.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:SYNOPSIS
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH SYNOPSIS
+.B notes
+.RB [ OPTION... ]
+.B COMMAND
+.RB [ ARGUMENT... ]
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:DESCRIPTION
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH DESCRIPTION
+.B notes
+is a command line note management application. It was created to help users to
+create/edit/(re-)move their notes and was designed with an emphasis on easy
+search and navigation through the existing notes.
+.P
+.B notes
+was inspired by
+.B pass
+- a CLI password manager.
+.B notes
+stores user notes in a simple directory tree under
+.I "~/.notes"
+(by default). Each note under
+.B notes
+management is just a plaintext file with a user defined formatting (if any).
+Using plaintext files allows notes to be easy searched and grepped with the
+standard UNIX tools.
+.P
+.B notes
+supports multiple commands to work with user notes. These commands are are
+described in the
+.B COMMANDS
+section below.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:COMMANDS
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH COMMANDS
+This section lists commands that
+.B notes
+application supports. The commands listed below that accept
+.I NOTE
+argument can either take a note path or a numerical ID returned by either
+.BR list ", " grep " or " find
+commands. Some commands have aliases (alternative names) that will be listed
+for each command that support them in the
+.I Command aliases
+part.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI add " NAME"
+Add a new note
+.IR NAME .
+An editor defined by the
+.I EDITOR
+environment variable will be opened for user to enter the contents of a new
+note.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI cat " NOTE"
+Print contents of the note
+.IR NOTE .
+Command aliases:
+.BR show .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI cp " NOTE DST"
+.RI "Copy " NOTE " to " DST .
+.I DST
+is a path relative to the notes directory. Command aliases:
+.BR copy .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BR find " [" \-t "] " "\fINAME\fR"
+Search note with name matching
+.I NAME
+glob pattern. When
+.B \-t
+option is not specified the output will be formatted as an enumerated list of
+notes with matching names.
+If
+.B \-t
+option is set, then the matching notes will be listed in a tree form.
+Command aliases:
+.BR search .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI edit " NOTE"
+Run an editor defined by the
+.I EDITOR
+environment variable to edit the note
+.IR NOTE .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI grep " GREP_ARG..."
+Search note contents with
+.B grep
+command with arguments specified by
+.IR GREP_ARG .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI less " NOTE"
+.RI "View " NOTE " in a pager specified by the " PAGER " environment variable"
+.RB "(usually " less " or " more ).
+Command aliases:
+.BR view .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BR ls " [" \fINAME_PREFIX\fR ]
+Print a tree of notes with names beginning with
+.IR NAME_PREFIX .
+If
+.I NAME_PREFIX
+is empty this command will list all notes.
+Command aliases:
+.BR list ", " tree .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI mv " NOTE DST"
+.RI "Move " NOTE " to " DST .
+.I DST
+is a path relative to the notes directory. Command aliases:
+.BR move .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.TP
+.BI rm " NOTE"
+.RI "Delete " NOTE .
+Command aliases:
+.BR remove .
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:OPTIONS
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print usage and exit.
+.TP
+.BR \-d ", " \-\-dir " " "\fIDIR"
+Set notes directory to
+.IR DIR .
+The environment variable
+.I NOTES_DIR
+can be used for the same purpose.
+.TP
+.BR \-V ", " \-\-version
+Print version and exit.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\" Section:EXAMPLES
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.SH EXAMPLES
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.B Create a new note
+.I temp/first_note
+.nf
+.RS
+$ notes \fBadd\fR temp/first_note
+.RE
+.fi
+An editor specified by the
+.I EDITOR
+environment variable will open to edit the note.
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B List notes
+.nf
+.RS
+$ notes \fBlist\fR
+notes
+└── temp
+    ├── first_note       [ 1 ]
+    └── second_note      [ 2 ]
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B Search note by name
+.nf
+.RS
+$ notes \fBfind\fR second
+
+[ 1 ] : temp/second_note
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B Search note by content
+.nf
+.RS
+$ notes \fBgrep\fR second
+
+[ 1 ] : temp/second_note
+Body of the second note
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B Print note contents by its index returned by list, find or grep
+.nf
+.RS
+$ notes \fBcat\fR 1
+
+>>> temp/second_note
+Body of the second note
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B Print note contents
+.nf
+.RS
+$ notes \fBcat\fR temp/first_note
+
+>>> temp/first_note
+Body of the first note
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.P
+.B Edit note
+.nf
+.RS
+$ notes \fBedit\fR temp/first_note
+.RE
+.fi
+\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
